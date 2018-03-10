@@ -15,9 +15,9 @@ installation is:
 * cd wpferguson
 * git clone https://github.com/wpferguson/extra-dt-lua-scripts 
 * in your luarc 
-  * require "wpferguson/name of script"
+  * require "wpferguson/_name of script_"
 
 
 To update the scripts just change directory to the lua directory and do a 
-git pull, then change to the wpferguson directory and do a git pull and 
+**git pull**, then change to the wpferguson directory and do a **git pull** and 
 everything should be up to date.
