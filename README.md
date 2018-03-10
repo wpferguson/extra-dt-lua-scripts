@@ -5,8 +5,8 @@ These scripts are dependent on the darktable-org/lua-scripts libraries, therefor
 installation is:
 
 * change directory to the darktable configuration directory 
-  ~/,config/darktable on linux and macos
-  ~/appdata/local/darktable on windows
+** ~/,config/darktable on linux and macos
+** ~/appdata/local/darktable on windows
 
 * mkdir lua 
 * cd lua 
@@ -15,7 +15,7 @@ installation is:
 * cd wpferguson
 * git clone https://github.com/wpferguson/extra-dt-lua-scripts .
 * in your luarc 
-  require "wpferguson/<scriptname>"
+** require "wpferguson/name of script"
 
 
 To update the scripts just change directory to the lua directory and do a 
