@@ -21,3 +21,6 @@ installation is:
 To update the scripts just change directory to the lua directory and do a 
 **git pull**, then change to the wpferguson directory and do a **git pull** and 
 everything should be up to date.
+
+`test to see if this
+is formatted properly`
