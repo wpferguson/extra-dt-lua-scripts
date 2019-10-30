@@ -605,7 +605,7 @@ postsharpen.widgets["presets"] = dt.new_widget("box"){
   orientation = "vertical",
   dt.new_widget("section_label"){label = "presets"},
   postsharpen.widgets["preset_list"],
-  postsharpen.widgets["preset_apply"],
+--  postsharpen.widgets["preset_apply"],
   postsharpen.widgets["preset_update"],
   postsharpen.widgets["preset_delete"],
   dt.new_widget("separator"){},
