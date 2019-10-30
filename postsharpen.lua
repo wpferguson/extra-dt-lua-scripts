@@ -20,7 +20,7 @@
 
   TODO
     Finish path substitution so that it mirrors darktables
-    Presets
+    Presets - done
 ]]
 
 -- TODO: Add filename conflict resolution [overwrite|unique]
@@ -41,8 +41,7 @@ local postsharpen = {
                   "HOUR","MINUTE","SECOND","EXIF_YEAR","EXIF_MONTH","EXIF_DAY","EXIF_HOUR","EXIF_MINUTE","EXIF_SECOND",
                   "STARS","LABELS","MAKER","MODEL","TITLE","CREATOR","PUBLISHER","RIGHTS","USERNAME","PICTURES_FOLDER",
                   "HOME","DESKTOP"},
-  widgets = {}
-
+  widgets = {},
 }
 
 -- - - - - - - - - - - - - - - - - - - - - - - -
@@ -72,9 +71,7 @@ end
 -- - - - - - - - - - - - - - - - - - - - - - - -
 
 local function create_slider(label, tooltip, smin, smax, hmin, hmax, step, digits, name, datatype, value)
-  local v = dt.preferences.read(MODULE_NAME, name, datatype)
-  if not v then v = value end
-  return dt.new_widget("slider"){
+  postsharpen.widgets[name] = dt.new_widget("slider"){
     label = label,
     tooltip = tooltip,
     soft_min = smin,
@@ -83,40 +80,243 @@ local function create_slider(label, tooltip, smin, smax, hmin, hmax, step, digit
     hard_max = hmax,
     step = step,
     digits = digits,
-    value = v,
+    value = value,
   }
+  dt.print_log("value is " .. postsharpen.widgets[name].value)
+  dt.print_log("returning name " .. name)
+  return name
 end
 
-local function create_preset(name)
-  -- create a preset
+local function create_combobox(label, tooltip, choices, name, datatype, value)
+  postsharpen.widgets[name] = dt.new_widget("combobox"){
+    label = label,
+    tooltip = tooltip,
+    selected = value,
+    table.unpack(choices)
+  }
+  dt.print_log("combobox selected is " .. postsharpen.widgets[name].selected)
+  return name
 end
 
-local function update_preset(preset)
-  -- update an existing preset
+local function create_check_button(label, tooltip, name, datatype, value)
+  postsharpen.widgets[name] = dt.new_widget("check_button"){
+    label = label,
+    tooltip = tooltip,
+    value = value,
+  }
+  return name
 end
 
-local function delete_preset(preset)
-  -- delete a preset
+local function sub1(num)
+  dt.print_log("in sub1...")
+  num = tonumber(num)
+  return num - 1
 end
 
-local function rename_preset(preset, new_name)
-  -- rename an existing preset
+local function div100(num)
+  dt.print_log("in div100")
+  num = tonumber(num)
+  return num / 100.
 end
 
-local function apply_preset(preset)
-  -- configure the settings from a preset
+local function save_preferences(name)
+  -- save current widget settings
+  local pref_name = "preferences"
+  if name then
+    pref_name = name
+  end
+  local prefs = {}
+  prefs[1] = postsharpen.widgets["output_path"].text
+  prefs[2] = postsharpen.widgets["method_chooser"].selected
+  local i = 2
+  --[[
+    iterating over a table using pairs doesn't guarentee the order the
+    items will be returned in, so we have to force the order so that we
+    can apply it correctly when we read it back.
+  ]]
+  -- determine how many engines we have
+  local num_engines = 0
+  for engine, vals in pairs(postsharpen.engines) do
+    num_engines = num_engines + 1
+  end
+  dt.print_log("found " .. num_engines .. " engines")
+  for j = 1, num_engines do 
+    for engine, vals in pairs(postsharpen.engines) do
+      if vals.stack_pos == j then
+        for name, v in pairs(vals.widgets) do
+          local widget_name = engine .. "_" .. name
+          dt.print_log("processing " .. widget_name)
+          local value = nil
+          if v.wtype == "combobox" then
+            value = postsharpen.widgets[widget_name].selected
+          elseif v.wtype == "check_button" then
+            value = postsharpen.widgets[widget_name].value
+            if value == true then
+              value = 1
+            else
+              value = 0
+            end
+          else
+            value = postsharpen.widgets[widget_name].value
+          end
+          prefs[i + v.widget_pos] = value
+        end
+        i = i + vals.num_widgets
+      end
+    end
+  end
+  dt.preferences.write(MODULE_NAME, pref_name, "string", table.concat(prefs, ','))
+  dt.preferences.write(MODULE_NAME, "initialized", "bool", true)
+end
+
+local function apply_saved_preferences(name)
+  -- load saved preferences and apply them
+  if dt.preferences.read(MODULE_NAME, "initialized", "bool") then
+    dt.print_log("preferences are initialized")
+    local pref_name = "preferences"
+    if name then
+      pref_name = name
+    end
+    dt.print_log("pref name is " .. pref_name)
+    local pref_string = dt.preferences.read(MODULE_NAME, pref_name, "string")
+    dt.print_log(pref_string)
+    local prefs = du.split(dt.preferences.read(MODULE_NAME, pref_name, "string"), ',')
+    dt.print_log("number of preferences is " .. #prefs)
+    postsharpen.widgets["output_path"].text = prefs[1]
+    dt.print_log("set output path")
+    postsharpen.widgets["method_chooser"].selected = prefs[2]
+    dt.print_log("set method_chooser")
+    local i = 2
+  -- determine how many engines we have
+    local num_engines = 0
+    for engine, vals in pairs(postsharpen.engines) do
+      num_engines = num_engines + 1
+    end
+    dt.print_log("found " .. num_engines .. " engines")
+    for j = 1, num_engines do 
+      for engine, vals in pairs(postsharpen.engines) do
+        if vals.stack_pos == j then
+          for name, v in pairs(vals.widgets) do
+            local widget_name = engine .. "_" .. name
+            dt.print_log("processing " .. widget_name)
+            if v.wtype == "combobox" then
+              postsharpen.widgets[widget_name].selected = prefs[i + v.widget_pos]
+            elseif v.wtype == "check_button" then
+              local value = prefs[i + v.widget_pos]
+              if value == 1 then
+                value = true
+              else
+                value = false
+              end
+              postsharpen.widgets[widget_name].value = value
+            else
+              postsharpen.widgets[widget_name].value = prefs[i + v.widget_pos]
+            end
+          end
+          i = i + vals.num_widgets
+          -- in case we add new engines, they won't have presets on the first run
+          if i == #prefs then
+            return
+          end
+        end
+      end
+    end
+  end
+end
+
+local function update_combobox_choices(combobox, choice_table, selected)
+  local items = #combobox
+  local choices = #choice_table
+  for i, name in ipairs(choice_table) do 
+    combobox[i] = name
+  end
+  if choices < items then
+    for j = items, choices + 1, -1 do
+      combobox[j] = nil
+    end
+  end
+  combobox.value = selected
 end
 
 local function read_presets()
   -- read the presets from preferences
+  local presets = du.split(dt.preferences.read(MODULE_NAME, "preset_list", "string"), ',')
+  dt.print_log(#presets .. " read")
+  return presets
 end
 
 local function save_presets()
   -- save the presets to preferences
+  local presets = {}
+  local combobox = postsharpen.widgets["preset_list"]
+  for i = 1, #combobox do
+    if combobox[i] ~= "none" then
+      table.insert(presets, #presets + 1, combobox[i])
+    end
+  end
+  table.sort(presets)
+  dt.preferences.write(MODULE_NAME, "preset_list", "string", table.concat(presets, ','))
 end
 
-local function default_presets()
-  -- a set of default presets, if none exist
+local function create_preset()
+  -- create a preset
+  if postsharpen.widgets["preset_new_name"].text ~= "" and postsharpen.widgets["preset_new_name"].text ~= "none" then
+    save_preferences(postsharpen.widgets["preset_new_name"].text)
+    local presets = read_presets()
+    dt.print_log("read presets returned " .. #presets .. " presets")
+    if #presets == 0 then
+      dt.print_log("adding new preset to empty table")
+      presets[1] = postsharpen.widgets["preset_new_name"].text
+    end
+    dt.print_log("now have " .. #presets .. " presets")
+    presets[#presets + 1] = postsharpen.widgets["preset_new_name"].text
+    table.sort(presets)
+    table.insert(presets, 1, "none")
+    choice = nil
+    for i, name in ipairs(presets) do
+      if name == postsharpen.widgets["preset_new_name"].text then
+        choice = i
+      end
+    end
+    update_combobox_choices(postsharpen.widgets["preset_list"], presets, choice)
+    save_presets()
+    postsharpen.widgets["preset_new_name"].text = ""
+  end
+end
+
+local function update_preset()
+  -- update an existing preset
+  if postsharpen.widgets["preset_list"].value ~= "none" then
+    save_preferences(postsharpen.widgets["preset_list"].value)
+  end
+end
+
+local function delete_preset()
+  -- delete a preset
+  local choice
+  if postsharpen.widgets["preset_list"].value ~= "none" then
+    local presets = read_presets()
+    choice = nil
+    for i, name in ipairs(presets) do
+      if name == postsharpen.widgets["preset_list"].value then
+        choice = i
+      end
+    end
+
+    local tmp = table.remove(presets, choice)
+    dt.print_log(tmp .. " removed from presets")
+
+    table.insert(presets, 1, "none")
+    update_combobox_choices(postsharpen.widgets["preset_list"], presets, 1)
+    save_presets()
+  end
+end
+
+local function apply_preset()
+  -- configure the settings from a preset
+  if postsharpen.widgets["preset_list"].selected > 1 then
+    apply_saved_preferences(postsharpen.widgets["preset_list"].value)
+  end
 end
 
 local function stop_job(job)
@@ -158,6 +358,9 @@ end
 local function show_status(storage, image, format, filename, number, total, high_quality, extra_data)
   dt.print(_("exporting ")..tostring(number).." / "..tostring(total))   
   dt.print_log("exporting " .. image.filename .. " to " .. filename)
+  if format.quality then
+    extra_data["quality"] = format.quality
+  end
 end
 
 local function setup(storage, img_format, image_table, high_quality, extra_data)
@@ -165,39 +368,48 @@ local function setup(storage, img_format, image_table, high_quality, extra_data)
   -- save widget values in the extra_data table
   extra_data["images"] = image_table
   extra_data["output_path"] = postsharpen.widgets["output_path"].text
-  dt.preferences.write(MODULE_NAME, "output_path", "string", postsharpen.widgets["output_path"].text)
   extra_data["method"] = postsharpen.widgets["method_chooser"].value
-  dt.preferences.write(MODULE_NAME, "method_chooser", "integer", postsharpen.widgets["method_chooser"].selected)
-  extra_data["sharpen_sigma"] = postsharpen.widgets["sharpen_sigma"].value
-  dt.preferences.write(MODULE_NAME, "sharpen_sigma", "float", postsharpen.widgets["sharpen_sigma"].value)
-  extra_data["sharpen_radius"] = postsharpen.widgets["sharpen_radius"].value
-  dt.preferences.write(MODULE_NAME, "sharpen_radius", "integer", postsharpen.widgets["sharpen_radius"].value)
-  extra_data["unsharp_radius"] = postsharpen.widgets["unsharp_radius"].value
-  dt.preferences.write(MODULE_NAME, "unsharp_radius", "float", postsharpen.widgets["unsharp_radius"].value)
-  extra_data["unsharp_sigma"] = postsharpen.widgets["unsharp_sigma"].value
-  dt.preferences.write(MODULE_NAME, "unsharp_sigma", "float", postsharpen.widgets["unsharp_sigma"].value)
-  extra_data["unsharp_amount"] = postsharpen.widgets["unsharp_amount"].value / 100.
-  dt.preferences.write(MODULE_NAME, "unsharp_amount", "integer", postsharpen.widgets["unsharp_amount"].value)
-  extra_data["unsharp_threshold"] = postsharpen.widgets["unsharp_threshold"].value / 100.
-  dt.print_log("unsharp_threshold is " .. postsharpen.widgets["unsharp_threshold"].value)
-  dt.preferences.write(MODULE_NAME, "unsharp_threshold", "integer", postsharpen.widgets["unsharp_threshold"].value)
   extra_data["filetype"] = img_format.extension
   dt.print_log("image format is " .. img_format.extension)
+  save_preferences()
 end
 
 local function sharpen(storage, image_table, extra_data)
   -- sharpen the exported images
   local images = extra_data["images"]
-  local sharpen_opts = string.format(" %dx%.02f ", extra_data["sharpen_radius"], extra_data["sharpen_sigma"])
+  local engine = string.gsub(postsharpen.widgets["method_chooser"].value, ' ', '_')
+  local format = postsharpen.engines[engine]["format"]
+  local bin = postsharpen.engines[engine]["bin"]
+  local switch = postsharpen.engines[engine]["switch"]
+  local prog_args = {}
+
+  for k,v in pairs(postsharpen.engines[engine]["widgets"]) do
+    local widget_name = engine .. "_" .. k
+    local widget_type = v.wtype
+    local val = nil
+    if widget_type == "combobox" then
+      val = postsharpen.widgets[widget_name].selected
+    elseif widget_type == "check_button" then
+      val = 0
+      if postsharpen.widgets[widget_name].value == true then
+        val = 1
+      end
+    else
+      val = postsharpen.widgets[widget_name].value
+    end
+    if v.adjustment then
+      dt.print_log("took the adjustment")
+      val = v.adjustment(val)
+    end
+    prog_args[v.widget_pos] = val
+  end
+
+  local sharpen_opts = string.format(format, table.unpack(prog_args))
   dt.print_log("sharpen_opts are " .. sharpen_opts)
-  local unsharp_opts = string.format(" %.02fx%.02f+%.02f+%.02f ", extra_data["unsharp_radius"], extra_data["unsharp_sigma"], extra_data["unsharp_amount"], 
-                                               extra_data["unsharp_threshold"])
-  dt.print_log("unsharp_opts are " .. unsharp_opts)
+
+  local prog = df.check_if_bin_exists(bin)
+
   local datetime = os.date("*t")
-  local convert = df.check_if_bin_exists("convert")
-  dt.print_log("method is " .. extra_data["method"])
-  local sharpen_cmd = extra_data["method"] == "sharpen" and convert .. " -sharpen" .. sharpen_opts or convert .. " -unsharp" .. unsharp_opts
-  dt.print_log("sharpen command is " .. sharpen_cmd)
   local destination = nil
   local job = dt.gui.create_job(_("sharpen images"), true, stop_job)
   for i,image in ipairs(images) do
@@ -209,8 +421,17 @@ local function sharpen(storage, image_table, extra_data)
       df.mkdir(path)
     end
     local filename = image_table[image]
-    dt.print_log("running " .. sharpen_cmd .. filename .. " " .. destination)
-    dtsys.external_command(sharpen_cmd .. filename .. " " .. destination)
+    local cmd = nil
+    if bin == "gmic" then
+      cmd = prog .. " " .. filename .. switch .. sharpen_opts .. "-o " .. destination
+      if extra_data["quality"] then
+        cmd = cmd .. "," .. extra_data["quality"]
+      end
+    else
+      cmd = prog .. switch .. sharpen_opts .. filename .. " " .. destination
+    end
+    dt.print_log("running " .. cmd)
+    dtsys.external_command(cmd)
     os.remove(filename)
     job.percent = i / #images
   end
@@ -222,89 +443,208 @@ end
 -- M A I N
 -- - - - - - - - - - - - - - - - - - - - - - - -
 
--- read my stored data
+postsharpen['engines'] = {
+  sharpen = {
+    name = 'sharpen',
+    stack_pos = 1,
+    bin = 'convert',
+    switch = ' -sharpen',
+    format = ' %dx%.02f ',
+    num_widgets = 2,
+    widgets = {
+      radius  = {widget_pos = 1, wtype = 'slider', values = {_("radius"), _("the extent of the effect, leave at 0 to let the program choose the best value"), 
+                                                  0, 5, 0, 5, 1, 0, "sharpen_radius", "integer", 0}, adjustment = nil},
+      sigma   = {widget_pos = 2, wtype = 'slider', values = {_("sigma"), _("the amount of sharpening"), 
+                                                 0, 5, 0, 5, 0.1, 1, "sharpen_sigma", "float", .75}, adjustment = nil}
+    }
+  },
+  unsharp_mask = {
+    name = 'unsharp mask',
+    stack_pos = 2,
+    bin = 'convert',
+    switch = ' -unsharp',
+    format = ' %.02fx%.02f+%.02f+%.02f ',
+    num_widgets = 4,
+    widgets = {
+      radius    = {widget_pos = 1, wtype = 'slider', values = {_("radius"), _("the radius of the Gaussian, in pixels, not counting the center pixel"),
+                                                  0, 5, 0, 5, 0.1, 1, "unsharp_mask_radius", "float", 0.2}, adjustment = nil},
+      sigma     = {widget_pos = 2, wtype = 'slider', values = {_("sigma"), _("the standard deviation of the Gaussian, in pixels.  Should be >= radius"), 
+                                                   0, 5, 0, 5, 0.1, 1, "unsharp_mask_sigma", "float", 0.2}, adjustment = nil},
+      amount    = {widget_pos = 3, wtype = 'slider', values = {_("amount"), _("the percentage of the difference between the original and the blur image that is added back into the original"), 
+                                                  0, 500, 0, 500, 1, 0, "unsharp_mask_amount", "integer", 100}, adjustment = div100},
+      threshold = {widget_pos = 4, wtype = 'slider', values = {_("threshold"), _("the threshold to limit the effect.  0 is full effect and 100 is no effect"),
+                                                     0, 100, 0, 100, 1, 0, "unsharp_mask_threshold", "integer", 25}, adjustment = div100}
+    }
+  },
+  richardson_lucy_deconvolve = {
+    name = "richardson lucy deconvolve",
+    stack_pos = 3,
+    bin = 'gmic',
+    switch = " -fx_unsharp_richardsonlucy ",
+    format = ' %.02f,%d,%d,%d ',
+    num_widgets = 4,
+    widgets = {
+      sigma      = {widget_pos = 1, wtype = 'slider',       values = {_("sigma"), _(""), 0.5,10,0.5,10,0.1,1, "richardson_lucy_deconvolve_sigma", "float", 1.0}, adjustment = nil},
+      iterations = {widget_pos = 2, wtype = 'slider',       values = {_("iterations"), _(""), 1,100,1,100,1,0, "richardson_lucy_deconvolve_iterations", "integer", 10}, adjustment = nil},
+      blur       = {widget_pos = 3, wtype = 'combobox',     values = {_("blur"), _(""), {"exponential", "gaussian"}, "richardson_lucy_deconvolve_blur", "integer", 2}, adjustment = sub1},
+      cut        = {widget_pos = 4, wtype = 'check_button', values = {_("cut"), _(""), "richardson_lucy_deconvolve_cut", "bool", false}, adjustment = nil}
+    }
+  }
+}
 
--- set up widgets
+local method_stack_items = {}
+local method_stack_choices = {}
 
--- sharpen widgets
+for method, v1 in pairs(postsharpen.engines) do 
+  dt.print_log("processing value " .. method)
+  dt.print_log("creating new widget table")
+  local widget_table = {}
+  dt.print_log("num_widgets is " .. v1.num_widgets)
+  for i = 1, v1.num_widgets do 
+    widget_table[i] = ""
+  end
+  dt.print_log("length of widget table is " .. #widget_table)
+  for key,val in pairs(v1.widgets) do
+    dt.print_log("processing widget " .. key)
+    dt.print_log("widget type is " .. postsharpen.engines[method]["widgets"][key]['wtype'])
+    dt.print_log("position is " .. val.widget_pos)
+    if val.wtype == "slider" then
+      widget_table[val.widget_pos] = postsharpen.widgets[create_slider(table.unpack(val.values))]
+    elseif val.wtype == "combobox" then 
+      widget_table[val.widget_pos] = postsharpen.widgets[create_combobox(table.unpack(val.values))]
+    elseif val.wtype == "check_button" then
+      widget_table[val.widget_pos] = postsharpen.widgets[create_check_button(table.unpack(val.values))]
+    else
+      dt.print_error("unknown widget type")
+    end
+    dt.print_log("length of widget table is now " .. #widget_table)
+  end
+  dt.print_log("widgets created, putting them in a box")
+  dt.print_log("widget 2 is " .. widget_table[2].label)
+  dt.print_log("number of widgets in table is " .. #widget_table)
+  dt.print_log("label name is " .. v1.name)
+  postsharpen.widgets[v1.name] = dt.new_widget("box"){
+    orientation = "vertical",
+    dt.new_widget("label"){label = v1.name},
+    table.unpack(widget_table),
+  }
+  method_stack_items[v1.stack_pos] = postsharpen.widgets[v1.name]
+  method_stack_choices[v1.stack_pos] = v1.name
+end
 
--- radius
 
-postsharpen.widgets["sharpen_radius"] = create_slider(_("radius"), _("the extent of the effect, leave at 0 to let the program choose the best value"), 
-                                                      0, 5, 0, 5, 1, 0, "sharpen_radius", "integer", 0)
-
--- sigma
-
-postsharpen.widgets["sharpen_sigma"] = create_slider((_"sigma"), _("the amount of sharpening"), 
-                                                     0, 5, 0, 5, 0.1, 1, "sharpen_sigma", "float", .75)
--- unsharp widgets
-
--- radius
-
-postsharpen.widgets["unsharp_radius"] = create_slider(_("radius"), _("the radius of the Gaussian, in pixels, not counting the center pixel"),
-                                                      0, 5, 0, 5, 0.1, 1, "unsharp_radius", "float", 0.2)
-
--- sigma
-
-postsharpen.widgets["unsharp_sigma"] = create_slider(_("sigma"), _("the standard deviation of the Gaussian, in pixels.  Should be >= radius"), 
-                                                       0, 5, 0, 5, 0.1, 1, "unsharp_sigma", "float", 0.2)
-
--- amount
-
-postsharpen.widgets["unsharp_amount"] = create_slider(_("amount"), _("the percentage of the difference between the original and the blur image that is added back into the original"), 
-                                                      0, 500, 0, 500, 1, 0, "unsharp_amount", "integer", 100)
-
--- threshold
-
-postsharpen.widgets["unsharp_threshold"] = create_slider(_("threshold"), _("the threshold to limit the effect.  0 is full effect and 100 is no effect"),
-                                                         0, 100, 0, 100, 1, 0, "unsharp_threshold", "integer", 25)
-
-local tmp = dt.preferences.read(MODULE_NAME, "output_path", "string")
-if string.len(tmp) < 1 then tmp = "$(FILE_FOLDER)/darktable_exported/$(FILE_NAME)" end
+local tmp = "$(FILE_FOLDER)/darktable_exported/$(FILE_NAME)"
 postsharpen.widgets["output_path"] = dt.new_widget("entry"){
   text = tmp,
   editable = true,
 }
 
-postsharpen.widgets["unsharp_widget"] = dt.new_widget("box"){
-  orientation = "vertical",
-  dt.new_widget("label"){label = _("unsharp mask")},
-  postsharpen.widgets["unsharp_radius"],
-  postsharpen.widgets["unsharp_sigma"],
-  postsharpen.widgets["unsharp_amount"],
-  postsharpen.widgets["unsharp_threshold"],
-}
-
-postsharpen.widgets["sharpen_widget"] = dt.new_widget("box"){
-  orientation = "vertical",
-  dt.new_widget("label"){label = _("sharpen")},
-  postsharpen.widgets["sharpen_sigma"],
-  postsharpen.widgets["sharpen_radius"],
-}
-
 postsharpen.widgets["method_stack"] = dt.new_widget("stack"){
-  postsharpen.widgets["unsharp_widget"],
-  postsharpen.widgets["sharpen_widget"],
-}
+  table.unpack(method_stack_items),
+ }
 
-tmp = dt.preferences.read(MODULE_NAME, "method_chooser", "integer")
-if tmp <= 0 then tmp = 1 end
+tmp = 1 
 postsharpen.widgets["method_chooser"] = dt.new_widget("combobox"){
   label = _("method"),
   tooltip = _("select sharpening method"),
   changed_callback = function(self)
     postsharpen.widgets["method_stack"].active = self.selected
   end,
-  value = tmp, _("unsharp mask"),_("sharpen"),
+  value = tmp,
+  table.unpack(method_stack_choices),
 }
+
+local saved_presets = read_presets()
+table.insert(saved_presets, 1, "none")
+-- preset widgets
+postsharpen.widgets["preset_list"] = dt.new_widget("combobox"){
+  tooltip = "select the preset to apply",
+  changed_callback = function(self)
+    apply_preset()
+  end,
+  value = 1,
+  table.unpack(saved_presets)
+}
+
+--[[postsharpen.widgets["preset_apply"] = dt.new_widget("button"){
+  label = "apply",
+  clicked_callback = function () 
+    apply_preset()
+  end
+}]]
+
+postsharpen.widgets["preset_update"] = dt.new_widget("button"){
+  label = "update",
+  clicked_callback = function ()
+    update_preset()
+  end
+}
+
+postsharpen.widgets["preset_delete"] = dt.new_widget("button"){
+  label = "delete",
+  clicked_callback = function() 
+    delete_preset()
+  end
+}
+
+postsharpen.widgets["preset_new_name"] = dt.new_widget("entry"){
+  tooltip = "specify the name of a new preset",
+  text = "",
+  placeholder = "Enter preset name",
+  editable = true,
+}
+
+postsharpen.widgets["preset_create"] = dt.new_widget("button"){
+  label = "create",
+  clicked_callback = function ()
+    create_preset()
+  end
+}
+
+postsharpen.widgets["presets"] = dt.new_widget("box"){
+  orientation = "vertical",
+  dt.new_widget("section_label"){label = "presets"},
+  postsharpen.widgets["preset_list"],
+  postsharpen.widgets["preset_apply"],
+  postsharpen.widgets["preset_update"],
+  postsharpen.widgets["preset_delete"],
+  dt.new_widget("separator"){},
+  dt.new_widget("section_label"){label = "create preset"},
+  postsharpen.widgets["preset_new_name"],
+  postsharpen.widgets["preset_create"]
+}
+
+local widget_widgets = {postsharpen.widgets["output_path"], postsharpen.widgets["method_chooser"], postsharpen.widgets["method_stack"], postsharpen.widgets["presets"]}
+
+-- let macos and windows users specify the location of the executabbles
+if dt.configuration.running_os == "windows" or dt.configuration.running_os == "macos" then
+  local engine_bins = {}
+  for engine,v in pairs(postsharpen.engines) do
+    table.insert(engine_bins, v['bin'])
+  end
+  dt.print_log("total engine bins is " .. #engine_bins)
+  table.sort(engine_bins)
+  dt.print_log("total engine bins after sorting is " .. #engine_bins)
+  local uniq_bins = {}
+  local lastval = ""
+  for i = 1, #engine_bins do
+    if engine_bins[i] ~= lastval then
+      uniq_bins[#uniq_bins + 1] = engine_bins[i]
+      lastval = engine_bins[i]
+    end
+  end
+  dt.print_log("total uniq bins is " .. #uniq_bins)
+  widget_widgets[#widget_widgets + 1] = df.executable_path_widget(uniq_bins)
+end
 
 local postsharpen_widget = dt.new_widget("box"){
   orientation = "vertical",
   dt.new_widget("label"){label = "output path"},
-  postsharpen.widgets["output_path"],
-  postsharpen.widgets["method_chooser"],
-  postsharpen.widgets["method_stack"],
+  table.unpack(widget_widgets),
 }
+
+apply_saved_preferences()
+
 -- register storage
 dt.register_storage(
   "postsharpen",
