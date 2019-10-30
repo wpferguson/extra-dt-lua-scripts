@@ -45,5 +45,5 @@ Name|Standalone|OS   |Purpose
 ----|:--------:|:---:|-------
 adjust_time|Yes|LMW|Adjust image times to synchronize images taken from multiple cameras for one event
 correct_lens|Yes|LMW|Alter the image database lens information string to correct for unknown or incorrectly recognized lenses
-postsharpen|No|L|Sharpen images after export using imagemagick
+postsharpen|No|LMW|Sharpen images after export using imagemagick
 
