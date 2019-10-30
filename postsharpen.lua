@@ -127,8 +127,9 @@ local function save_preferences(name)
   end
   local prefs = {}
   prefs[1] = postsharpen.widgets["output_path"].text
-  prefs[2] = postsharpen.widgets["method_chooser"].selected
-  local i = 2
+  prefs[2] = postsharpen.widgets["overwrite"].selected
+  prefs[3] = postsharpen.widgets["method_chooser"].selected
+  local i = 3
   --[[
     iterating over a table using pairs doesn't guarentee the order the
     items will be returned in, so we have to force the order so that we
@@ -184,9 +185,11 @@ local function apply_saved_preferences(name)
     dt.print_log("number of preferences is " .. #prefs)
     postsharpen.widgets["output_path"].text = prefs[1]
     dt.print_log("set output path")
-    postsharpen.widgets["method_chooser"].selected = prefs[2]
+    postsharpen.widgets["overwrite"].selected = prefs[2]
+    dt.print_log("set overwrite")
+    postsharpen.widgets["method_chooser"].selected = prefs[3]
     dt.print_log("set method_chooser")
-    local i = 2
+    local i = 3
   -- determine how many engines we have
     local num_engines = 0
     for engine, vals in pairs(postsharpen.engines) do
@@ -420,6 +423,9 @@ local function sharpen(storage, image_table, extra_data)
     if not df.check_if_file_exists(path) then
       df.mkdir(path)
     end
+    if postsharpen.widgets["overwrite"].value == "create unique filename" then
+      destination = df.create_unique_filename(destination)
+    end
     local filename = image_table[image]
     local cmd = nil
     if bin == "gmic" then
@@ -487,7 +493,7 @@ postsharpen['engines'] = {
       sigma      = {widget_pos = 1, wtype = 'slider',       values = {_("sigma"), _(""), 0.5,10,0.5,10,0.1,1, "richardson_lucy_deconvolve_sigma", "float", 1.0}, adjustment = nil},
       iterations = {widget_pos = 2, wtype = 'slider',       values = {_("iterations"), _(""), 1,100,1,100,1,0, "richardson_lucy_deconvolve_iterations", "integer", 10}, adjustment = nil},
       blur       = {widget_pos = 3, wtype = 'combobox',     values = {_("blur"), _(""), {"exponential", "gaussian"}, "richardson_lucy_deconvolve_blur", "integer", 2}, adjustment = sub1},
-      cut        = {widget_pos = 4, wtype = 'check_button', values = {_("cut"), _(""), "richardson_lucy_deconvolve_cut", "bool", false}, adjustment = nil}
+      cut        = {widget_pos = 4, wtype = 'check_button', values = {_("cut"), _(""), "richardson_lucy_deconvolve_cut", "bool", true}, adjustment = nil}
     }
   }
 }
@@ -537,6 +543,12 @@ local tmp = "$(FILE_FOLDER)/darktable_exported/$(FILE_NAME)"
 postsharpen.widgets["output_path"] = dt.new_widget("entry"){
   text = tmp,
   editable = true,
+}
+
+postsharpen.widgets["overwrite"] = dt.new_widget("combobox"){
+  label = "on conflict",
+  value = 1,
+  "create unique filename", "overwrite",
 }
 
 postsharpen.widgets["method_stack"] = dt.new_widget("stack"){
@@ -614,7 +626,7 @@ postsharpen.widgets["presets"] = dt.new_widget("box"){
   postsharpen.widgets["preset_create"]
 }
 
-local widget_widgets = {postsharpen.widgets["output_path"], postsharpen.widgets["method_chooser"], postsharpen.widgets["method_stack"], postsharpen.widgets["presets"]}
+local widget_widgets = {postsharpen.widgets["output_path"], postsharpen.widgets["overwrite"], postsharpen.widgets["method_chooser"], postsharpen.widgets["method_stack"], postsharpen.widgets["presets"]}
 
 -- let macos and windows users specify the location of the executabbles
 if dt.configuration.running_os == "windows" or dt.configuration.running_os == "macos" then
