@@ -23,7 +23,9 @@
     Presets - done
 ]]
 
--- TODO: Add filename conflict resolution [overwrite|unique]
+-- TODO: Add filename conflict resolution [overwrite|unique] done
+--       Add versioning to preferences so that we dont crash on reload
+--       Add engine delimiters to preferences
 
 local dt = require "darktable"
 local du = require "lib/dtutils"
@@ -119,6 +121,30 @@ local function div100(num)
   return num / 100.
 end
 
+local function update_combobox_choices(combobox, choice_table, selected)
+  local items = #combobox
+  local choices = #choice_table
+  for i, name in ipairs(choice_table) do 
+    combobox[i] = name
+  end
+  if choices < items then
+    for j = items, choices + 1, -1 do
+      combobox[j] = nil
+    end
+  end
+  combobox.value = selected
+end
+
+local function read_presets()
+  -- read the presets from preferences
+  local presets = du.split(dt.preferences.read(MODULE_NAME, "preset_list", "string"), ',')
+  dt.print_log(#presets .. " read")
+  if(#presets == 0) then
+    presets = {}
+  end
+  return presets
+end
+
 local function save_preferences(name)
   -- save current widget settings
   local pref_name = "preferences"
@@ -167,7 +193,9 @@ local function save_preferences(name)
     end
   end
   dt.preferences.write(MODULE_NAME, pref_name, "string", table.concat(prefs, ','))
-  dt.preferences.write(MODULE_NAME, "initialized", "bool", true)
+  if dt.preferences.read(MODULE_NAME, "initialized", "bool") == false then
+    dt.preferences.write(MODULE_NAME, "initialized", "bool", true)
+  end
 end
 
 local function apply_saved_preferences(name)
@@ -224,28 +252,23 @@ local function apply_saved_preferences(name)
         end
       end
     end
+  else
+    dt.print_log("postsharpen not initialized, loading some presets")
+    -- load a couple of presets to help
+    dt.preferences.write(MODULE_NAME, "preset_list", "string", "print,web")
+    dt.print_log("wrote preset list")
+    dt.preferences.write(MODULE_NAME, "web", "string", "$(FILE_FOLDER)/darktable_exported/$(FILE_NAME),1,2,1.0,0.79999995231628,1.0,0.79999995231628,100.0,10.0,1.0,2.0,1,0")
+    dt.print_log("wrote preset web")
+    dt.preferences.write(MODULE_NAME, "print", "string", "$(FILE_FOLDER)/darktable_exported/$(FILE_NAME),1,2,1.0,0.79999995231628,2.0,1.7999999523163,100.0,25.0,1.0,2.0,1,0")
+    dt.print_log("wrote preset print")
+    local presets = read_presets()
+    dt.print_log("read " .. #presets .. " presets")
+    table.insert(presets, 1, "none")
+    dt.print_log("added none to presets")
+    update_combobox_choices(postsharpen.widgets["preset_list"], presets, 1)
+    dt.print_log("updated combobox")
+    save_preferences()
   end
-end
-
-local function update_combobox_choices(combobox, choice_table, selected)
-  local items = #combobox
-  local choices = #choice_table
-  for i, name in ipairs(choice_table) do 
-    combobox[i] = name
-  end
-  if choices < items then
-    for j = items, choices + 1, -1 do
-      combobox[j] = nil
-    end
-  end
-  combobox.value = selected
-end
-
-local function read_presets()
-  -- read the presets from preferences
-  local presets = du.split(dt.preferences.read(MODULE_NAME, "preset_list", "string"), ',')
-  dt.print_log(#presets .. " read")
-  return presets
 end
 
 local function save_presets()
@@ -317,8 +340,10 @@ end
 
 local function apply_preset()
   -- configure the settings from a preset
-  if postsharpen.widgets["preset_list"].selected > 1 then
-    apply_saved_preferences(postsharpen.widgets["preset_list"].value)
+  if postsharpen.widgets["preset_list"] then -- to get around initialization issue
+    if postsharpen.widgets["preset_list"].selected > 1 then
+      apply_saved_preferences(postsharpen.widgets["preset_list"].value)
+    end
   end
 end
 
@@ -459,7 +484,7 @@ postsharpen['engines'] = {
     num_widgets = 2,
     widgets = {
       radius  = {widget_pos = 1, wtype = 'slider', values = {_("radius"), _("the extent of the effect, leave at 0 to let the program choose the best value"), 
-                                                  0, 5, 0, 5, 1, 0, "sharpen_radius", "integer", 0}, adjustment = nil},
+                                                  0, 5, 0, 5, 1, 0, "sharpen_radius", "integer", 1}, adjustment = nil},
       sigma   = {widget_pos = 2, wtype = 'slider', values = {_("sigma"), _("the amount of sharpening"), 
                                                  0, 5, 0, 5, 0.1, 1, "sharpen_sigma", "float", .75}, adjustment = nil}
     }
@@ -473,13 +498,13 @@ postsharpen['engines'] = {
     num_widgets = 4,
     widgets = {
       radius    = {widget_pos = 1, wtype = 'slider', values = {_("radius"), _("the radius of the Gaussian, in pixels, not counting the center pixel"),
-                                                  0, 5, 0, 5, 0.1, 1, "unsharp_mask_radius", "float", 0.2}, adjustment = nil},
+                                                  0, 5, 0, 5, 0.1, 1, "unsharp_mask_radius", "float", 1.0}, adjustment = nil},
       sigma     = {widget_pos = 2, wtype = 'slider', values = {_("sigma"), _("the standard deviation of the Gaussian, in pixels.  Should be >= radius"), 
-                                                   0, 5, 0, 5, 0.1, 1, "unsharp_mask_sigma", "float", 0.2}, adjustment = nil},
+                                                   0, 5, 0, 5, 0.1, 1, "unsharp_mask_sigma", "float", 0.8}, adjustment = nil},
       amount    = {widget_pos = 3, wtype = 'slider', values = {_("amount"), _("the percentage of the difference between the original and the blur image that is added back into the original"), 
                                                   0, 500, 0, 500, 1, 0, "unsharp_mask_amount", "integer", 100}, adjustment = div100},
       threshold = {widget_pos = 4, wtype = 'slider', values = {_("threshold"), _("the threshold to limit the effect.  0 is full effect and 100 is no effect"),
-                                                     0, 100, 0, 100, 1, 0, "unsharp_mask_threshold", "integer", 25}, adjustment = div100}
+                                                     0, 100, 0, 100, 1, 0, "unsharp_mask_threshold", "integer", 10}, adjustment = div100}
     }
   },
   richardson_lucy_deconvolve = {
@@ -545,15 +570,21 @@ postsharpen.widgets["output_path"] = dt.new_widget("entry"){
   editable = true,
 }
 
+dt.print_log("dreated output_path")
+
 postsharpen.widgets["overwrite"] = dt.new_widget("combobox"){
   label = "on conflict",
   value = 1,
   "create unique filename", "overwrite",
 }
 
+dt.print_log("created overwrite")
+
 postsharpen.widgets["method_stack"] = dt.new_widget("stack"){
   table.unpack(method_stack_items),
  }
+
+ dt.print_log("created method_stack")
 
 tmp = 1 
 postsharpen.widgets["method_chooser"] = dt.new_widget("combobox"){
@@ -565,6 +596,8 @@ postsharpen.widgets["method_chooser"] = dt.new_widget("combobox"){
   value = tmp,
   table.unpack(method_stack_choices),
 }
+
+dt.print_log("created method_chooser")
 
 local saved_presets = read_presets()
 table.insert(saved_presets, 1, "none")
@@ -578,12 +611,7 @@ postsharpen.widgets["preset_list"] = dt.new_widget("combobox"){
   table.unpack(saved_presets)
 }
 
---[[postsharpen.widgets["preset_apply"] = dt.new_widget("button"){
-  label = "apply",
-  clicked_callback = function () 
-    apply_preset()
-  end
-}]]
+dt.print_log("created preset_list")
 
 postsharpen.widgets["preset_update"] = dt.new_widget("button"){
   label = "update",
@@ -592,12 +620,16 @@ postsharpen.widgets["preset_update"] = dt.new_widget("button"){
   end
 }
 
+dt.print_log("created preset_update")
+
 postsharpen.widgets["preset_delete"] = dt.new_widget("button"){
   label = "delete",
   clicked_callback = function() 
     delete_preset()
   end
 }
+
+dt.print_log("created preset_delete")
 
 postsharpen.widgets["preset_new_name"] = dt.new_widget("entry"){
   tooltip = "specify the name of a new preset",
@@ -606,12 +638,16 @@ postsharpen.widgets["preset_new_name"] = dt.new_widget("entry"){
   editable = true,
 }
 
+dt.print_log("created preset_delete")
+
 postsharpen.widgets["preset_create"] = dt.new_widget("button"){
   label = "create",
   clicked_callback = function ()
     create_preset()
   end
 }
+
+dt.print_log("created preset_create")
 
 postsharpen.widgets["presets"] = dt.new_widget("box"){
   orientation = "vertical",
@@ -625,6 +661,8 @@ postsharpen.widgets["presets"] = dt.new_widget("box"){
   postsharpen.widgets["preset_new_name"],
   postsharpen.widgets["preset_create"]
 }
+
+dt.print_log("created presets")
 
 local widget_widgets = {postsharpen.widgets["output_path"], postsharpen.widgets["overwrite"], postsharpen.widgets["method_chooser"], postsharpen.widgets["method_stack"], postsharpen.widgets["presets"]}
 
@@ -649,13 +687,19 @@ if dt.configuration.running_os == "windows" or dt.configuration.running_os == "m
   widget_widgets[#widget_widgets + 1] = df.executable_path_widget(uniq_bins)
 end
 
+dt.print_log("created widget_widgets")
+
 local postsharpen_widget = dt.new_widget("box"){
   orientation = "vertical",
   dt.new_widget("label"){label = "output path"},
   table.unpack(widget_widgets),
 }
 
+dt.print_log("created postsharpen_widget")
+
 apply_saved_preferences()
+
+dt.print_log("applied save prefs")
 
 -- register storage
 dt.register_storage(
