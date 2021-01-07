@@ -26,6 +26,7 @@
 -- TODO: Add filename conflict resolution [overwrite|unique] done
 --       Add versioning to preferences so that we dont crash on reload
 --       Add engine delimiters to preferences
+--       Add preview for gmic based sharpeners using gmic-qt standalone and retrieving and updating parameters
 
 local dt = require "darktable"
 local du = require "lib/dtutils"
@@ -53,7 +54,7 @@ local postsharpen = {
 local MODULE_NAME = "postsharpen"
 local PS = dt.configuration.running_os == "windows" and  "\\"  or  "/"
 local USER = os.getenv("USERNAME")
-local HOME = os.getenv("HOME")
+local HOME =  dt.configuration.running_os == "windows" and  os.getenv("HOMEPATH") or os.getenv("HOME")
 local PICTURES = HOME .. PS .. dt.configuration.running_os == "windows" and "My Pictures" or "Pictures"
 local DESKTOP = HOME .. PS .. "Desktop"
 
