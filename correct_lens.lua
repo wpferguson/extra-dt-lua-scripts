@@ -76,6 +76,7 @@ end
 
 
 local PS = dt.configuration.running_os == "windows" and "\\" or "/"
+local CURR_API_STRING = dt.configuration.api_version_string
 
 local correct_lens = {}
 
@@ -407,7 +408,7 @@ dt.gui.libs.image.register_action(
 ]]
 
 dt.register_event(
-  "shortcut",
+  CURR_API_STRING >= "6.2.1" and "correct_lens", "shortcut" or "shortcut" ,
   function(event, shortcut) apply_lens_string(dt.gui.action_images) end,
   "correct lens information"
 )
