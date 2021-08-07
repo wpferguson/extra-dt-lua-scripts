@@ -65,7 +65,7 @@ local dt = require "darktable"
 local du = require "lib/dtutils"
 local gettext = dt.gettext
 
-du.check_min_api_version("5.0.0", "correct_lens") 
+du.check_min_api_version("7.0.0", "correct_lens") 
 
 -- Tell gettext where to find the .mo file translating messages for a particular domain
 gettext.bindtextdomain("correct_lens",dt.configuration.config_dir.."/lua/locale/")
@@ -398,6 +398,7 @@ dt.register_lib(
 ]]
 
 dt.gui.libs.image.register_action(
+  "correct_lens",
   "correct lens information",
   function(event, images) apply_lens_string(images) end,
   "correct lens information"
@@ -408,7 +409,7 @@ dt.gui.libs.image.register_action(
 ]]
 
 dt.register_event(
-  CURR_API_STRING >= "6.2.1" and "correct_lens", "shortcut" or "shortcut" ,
+  "correct_lens", "shortcut",
   function(event, shortcut) apply_lens_string(dt.gui.action_images) end,
   "correct lens information"
 )
